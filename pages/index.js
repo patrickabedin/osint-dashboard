@@ -1,44 +1,93 @@
+import { useState, useEffect } from 'react';
+
+const API_BASE = 'http://108.61.173.173:3118';
+
 export default function Home() {
-  // Stub signals — real endpoint: /api/signals (wired to CRUCIX adapter)
-  const signals = [
-    { time: '2026-04-02 02:44 UTC', symbol: 'BTCUSDT', side: 'SHORT', conf: 75, reason: 'VIX > 30' },
-  ];
+  const [state, setState] = useState({
+    vix: null, conflictScore: null, supplyChain: null,
+    regime: 'LOADING', updatedAt: null,
+  });
+  const [signals, setSignals] = useState([]);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [s, sig] = await Promise.all([
+          fetch(`${API_BASE}/api/state`).then(r => r.json()),
+          fetch(`${API_BASE}/api/signals`).then(r => r.json()),
+        ]);
+        setState(s);
+        setSignals(Array.isArray(sig) ? sig.slice(0, 10) : []);
+        setError(false);
+      } catch (e) {
+        console.error('[Dashboard] fetch error:', e);
+        setError(true);
+      }
+    };
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const regimeColor = {
+    RISK_OFF: '#f87171', RISK_ON: '#4ade80', NEUTRAL: '#facc15', UNKNOWN: '#888', LOADING: '#888',
+  };
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
         <h1 style={styles.title}>🦅 OSINT ENGINE — LIVE</h1>
         <div style={styles.badge}>
-          <span style={styles.dot}></span> ACTIVE
+          <span style={styles.dot}></span> {error ? 'API ERROR' : 'ACTIVE'}
         </div>
       </header>
+
+      {error && (
+        <div style={styles.errorBar}>
+          ⚠️ Cannot reach API at {API_BASE} — will retry every 60s
+        </div>
+      )}
 
       <div style={styles.grid}>
         {/* VIX Panel */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>VIX (Fear Index)</h2>
-          <div style={styles.bigValue}>—</div>
-          <p style={styles.subtext}>Polling CRUCIX localhost:3117</p>
+          <div style={styles.bigValue}>
+            {state.vix !== null ? state.vix.toFixed(1) : '—'}
+          </div>
+          <p style={styles.subtext}>
+            {state.updatedAt ? `Updated ${new Date(state.updatedAt).toLocaleTimeString()}` : 'Waiting for data…'}
+          </p>
         </div>
 
         {/* Regime Panel */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>Regime</h2>
-          <div style={styles.regime}>NEUTRAL</div>
+          <div style={{ ...styles.regime, color: regimeColor[state.regime] || '#888' }}>
+            {state.regime}
+          </div>
           <p style={styles.subtext}>Updated every 60s</p>
         </div>
 
         {/* Conflict Score */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>Conflict Score</h2>
-          <div style={styles.bigValue}>—</div>
+          <div style={styles.bigValue}>
+            {state.conflictScore !== null ? state.conflictScore.toFixed(0) : '—'}
+          </div>
           <p style={styles.subtext}>Geopolitical tension index</p>
         </div>
 
         {/* Supply Chain */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>Supply Chain Pressure</h2>
-          <div style={styles.bigValue}>—</div>
+          <div style={{
+            ...styles.bigValue,
+            color: state.supplyChain > 2 ? '#f87171' : '#f97316',
+          }}>
+            {state.supplyChain !== null ? state.supplyChain.toFixed(2) : '—'}
+          </div>
           <p style={styles.subtext}>Z-score (alert &gt; 2.0)</p>
         </div>
       </div>
@@ -57,14 +106,16 @@ export default function Home() {
             </tr>
           </thead>
           <tbody>
-            {signals.map((s, i) => (
+            {signals.length === 0 ? (
+              <tr><td style={styles.td} colSpan={5}>No signals yet — waiting for triggers…</td></tr>
+            ) : signals.map((s, i) => (
               <tr key={i}>
-                <td style={styles.td}>{s.time}</td>
+                <td style={styles.td}>{s.time ? new Date(s.time).toLocaleString() : '—'}</td>
                 <td style={styles.td}><b>{s.symbol}</b></td>
                 <td style={styles.td}>
                   <span style={s.side === 'LONG' ? styles.long : styles.short}>{s.side}</span>
                 </td>
-                <td style={styles.td}>{s.conf}%</td>
+                <td style={styles.td}>{s.confidence}%</td>
                 <td style={styles.td}>{s.reason}</td>
               </tr>
             ))}
@@ -85,6 +136,7 @@ const styles = {
   title: { fontSize: 28, color: '#f97316', margin: 0 },
   badge: { display: 'flex', alignItems: 'center', gap: 8, background: '#14532d', color: '#4ade80', padding: '6px 14px', borderRadius: 20, fontSize: 14, fontWeight: 600 },
   dot: { width: 10, height: 10, borderRadius: '50%', background: '#4ade80', animation: 'pulse 2s infinite' },
+  errorBar: { background: '#451a03', border: '1px solid #92400e', borderRadius: 8, padding: '10px 16px', marginBottom: 20, color: '#fbbf24', fontSize: 13 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 },
   card: { background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20 },
   cardFull: { background: '#111', border: '1px solid #222', borderRadius: 12, padding: 20, marginBottom: 24 },
