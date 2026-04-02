@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_BASE = 'http://108.61.173.173:3118';
+const API_BASE = 'https://osint-api.hellenicai.com';
 
 export default function Home() {
   const [state, setState] = useState({
